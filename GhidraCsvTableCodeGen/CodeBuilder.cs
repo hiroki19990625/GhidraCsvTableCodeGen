@@ -37,10 +37,14 @@ namespace GhidraCsvTableCodeGen
 
             var unit = new CodeCompileUnit();
             var @namespace = _commandOptions.ClassNamespace != null
-                ? new CodeNamespace(NoConflictSyntaxText(_commandOptions.ClassNamespace))
+                ? new CodeNamespace(_commandOptions.ClassNamespace)
                 : new CodeNamespace();
             var @class = new CodeTypeDeclaration(NoConflictSyntaxText(_commandOptions.ClassName));
             @class.IsEnum = _commandOptions.Type == TypeSpec.Enum;
+            if (@class.IsEnum)
+            {
+                @class.BaseTypes.Add(new CodeTypeReference(typeof(long)));
+            }
 
             foreach (FunctionEntry entry in entries)
             {
