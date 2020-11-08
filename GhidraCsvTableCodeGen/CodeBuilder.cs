@@ -14,7 +14,7 @@ namespace GhidraCsvTableCodeGen
     public class CodeBuilder
     {
         private readonly Regex _invalidKeyReplaceRegex =
-            new Regex(@"[-!#$%&()=~^|+{};*:<>?,./{}@\[\]\`\\ ]", RegexOptions.Compiled);
+            new Regex(@"[^0-9a-zA-Z]+", RegexOptions.Compiled);
 
         private readonly CommandOptions _commandOptions;
 
@@ -48,8 +48,7 @@ namespace GhidraCsvTableCodeGen
 
             foreach (FunctionEntry entry in entries)
             {
-                var field = new CodeMemberField(typeof(long),
-                    SignatureParse(entry.Label, entry.Location, entry.Signature));
+                var field = new CodeMemberField(typeof(long), SignatureParse(entry.Name, entry.Location));
                 field.InitExpression = new CodeSnippetExpression("0x" + entry.Location);
                 if (_commandOptions.Type == TypeSpec.Const)
                     field.Attributes = MemberAttributes.Const | MemberAttributes.Public;
@@ -77,20 +76,9 @@ namespace GhidraCsvTableCodeGen
                 .Replace('\'', '_');
         }
 
-        private string SignatureParse(string label, string location, string signature)
+        private string SignatureParse(string funcName, string location)
         {
-            string[] spaceSplit = signature.Split(' ');
-            string[] funcNameAndThis = spaceSplit[1].Split('(');
-            string funcName = funcNameAndThis[0];
-
-            if (funcNameAndThis.Length == 2)
-            {
-                string className = funcNameAndThis[1];
-                return MaxLenFix(NoConflictSyntaxText(className) + "_" + NoConflictSyntaxText(funcName)) + "_" +
-                       location;
-            }
-
-            return MaxLenFix(NoConflictSyntaxText(label)) + "_" + location;
+            return MaxLenFix(NoConflictSyntaxText(funcName)) + "_" + location;
         }
 
         private string MaxLenFix(string value)
