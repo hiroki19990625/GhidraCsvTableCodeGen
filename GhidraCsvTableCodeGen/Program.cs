@@ -1,5 +1,7 @@
 ﻿using CommandLine;
 using CommandLine.Text;
+using GhidraCsvTableCodeGen.CodeBuilders;
+using GhidraCsvTableCodeGen.Options;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -13,21 +15,23 @@ namespace GhidraCsvTableCodeGen
     {
         static async Task Main(string[] args)
         {
-            var parserResult = Parser.Default.ParseArguments<CommandOptions>(args);
-            await parserResult.MapResult(suc =>
+            var parseResult = Parser.Default.ParseArguments<TableGeneratorCommandOptions, WrapperCommandOptions>(args);
+            parseResult.WithParsed<TableGeneratorCommandOptions>(options =>
             {
-                var codeBuilder = new CodeBuilder(suc);
+                var codeBuilder = new TableGeneratorCodeBuilder(options);
                 var code = codeBuilder.Build();
 
-                File.WriteAllText(suc.ClassName + ".cs", code);
-
-                return Task.CompletedTask;
-            }, err =>
+                File.WriteAllText(options.ClassName + ".cs", code);
+            })
+            .WithParsed<WrapperCommandOptions>(options =>
             {
-                var help = HelpText.AutoBuild(parserResult);
+                var codeBuilder = new WrapperCodeBuilder(options);
+                codeBuilder.Build();
+            })
+            .WithNotParsed(err =>
+            {
+                var help = HelpText.AutoBuild(parseResult);
                 Console.WriteLine($"parse failed {help}");
-
-                return Task.CompletedTask;
             });
         }
     }
