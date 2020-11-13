@@ -52,7 +52,7 @@ namespace GhidraCsvTableCodeGen
                 field.InitExpression = new CodeSnippetExpression("0x" + entry.Location);
                 if (_commandOptions.Type == TypeSpec.Const)
                     field.Attributes = MemberAttributes.Const | MemberAttributes.Public;
-                field.Comments.Add(new CodeCommentStatement("<summary>" + (entry.Signature) + "</summary>", true));
+                field.Comments.Add(new CodeCommentStatement("<summary>" + EscapeDoc(entry.Signature) + "</summary>", true));
 
                 @class.Members.Add(field);
             }
@@ -91,6 +91,16 @@ namespace GhidraCsvTableCodeGen
             }
 
             return value;
+        }
+
+        private string EscapeDoc(string doc)
+        {
+            return doc
+                .Replace("&", "&amp;")
+                .Replace("<", "&lt;")
+                .Replace(">", "&gt;")
+                .Replace("\"", "&quot;")
+                .Replace("\'", "&apos;");
         }
     }
 }
