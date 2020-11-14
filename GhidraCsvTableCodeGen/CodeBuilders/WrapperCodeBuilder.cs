@@ -104,6 +104,7 @@ namespace GhidraCsvTableCodeGen.CodeBuilders
             Directory.CreateDirectory(_commandOptions.Output);
 
             idx = 0;
+            count = clases.Count;
             foreach (ClassEntry entry in clases.Values)
             {
                 string name = NoConflictSyntaxText(entry.Name);
@@ -134,7 +135,7 @@ namespace GhidraCsvTableCodeGen.CodeBuilders
                         dg.Parameters.Add(param);
                     }
 
-                    method.Statements.Add(new CodeSnippetStatement("        " + string.Format(_commandOptions.DllCallFunction, "0x" + functionEntry.Address.ToString("x"), dg.Name, string.Join(", ", functionEntry.Params.Select(e => NoConflictSyntaxText(e.ParamName))))));
+                    method.Statements.Add(new CodeSnippetStatement("        " + string.Format(_commandOptions.DllCallFunction, "0x" + functionEntry.Address.ToString("x"), dg.Name, string.Join(", ", method.Parameters.Cast<CodeParameterDeclarationExpression>().Select(e => e.Name)))));
 
                     @class.Members.Add(method);
                     @class.Members.Add(dg);
