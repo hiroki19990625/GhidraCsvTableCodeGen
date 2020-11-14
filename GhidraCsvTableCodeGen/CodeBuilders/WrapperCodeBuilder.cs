@@ -1,6 +1,9 @@
 ﻿using CsvHelper;
 using GhidraCsvTableCodeGen.Options;
+using Microsoft.CSharp;
 using System;
+using System.CodeDom;
+using System.CodeDom.Compiler;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -13,11 +16,28 @@ namespace GhidraCsvTableCodeGen.CodeBuilders
 {
     public class WrapperCodeBuilder
     {
+        private readonly Regex _invalidKeyReplaceRegex =
+            new Regex(@"[^0-9a-zA-Z]+", RegexOptions.Compiled);
+
         private readonly Regex _regex = 
             new Regex(@"\A(?<RetType>[a-zA-z0-9<>,.:&_*()\-]+)\s(?<RetPointer>[*]+)?\s?(?<FuncName>[a-zA-z0-9<>_()\-]+)\(((?<ArgType>[a-zA-z0-9<>,.:&_*()\-]+)\s(?<ArgPointer>[*]+)?\s?(?<ArgName>[a-zA-z0-9<>_.()\-]+),?\s?)*\)", RegexOptions.Compiled);
         private readonly Regex _namespaceRegex = new Regex(@"((?<NameSpace>[a-zA-z0-9<>,.:&_*()\-]+)(::)?)*");
 
         private readonly WrapperCommandOptions _commandOptions;
+
+        private readonly Dictionary<string, string> _convertTable = new Dictionary<string, string>()
+        {
+            { "bool", typeof(bool).AssemblyQualifiedName },
+            { "char", typeof(char).AssemblyQualifiedName },
+            { "byte", typeof(byte).AssemblyQualifiedName },
+            { "short", typeof(short).AssemblyQualifiedName },
+            { "int", typeof(int).AssemblyQualifiedName },
+            { "long", typeof(long).AssemblyQualifiedName },
+            { "float", typeof(float).AssemblyQualifiedName },
+            { "double", typeof(double).AssemblyQualifiedName },
+            { "void", typeof(void).AssemblyQualifiedName },
+            { "basic_string_char_struct_std_char_traits_char_class_std_allocator_char_", typeof(string).AssemblyQualifiedName }
+        };
 
         public WrapperCodeBuilder(WrapperCommandOptions options)
         {
@@ -78,8 +98,89 @@ namespace GhidraCsvTableCodeGen.CodeBuilders
                     }
                 }
 
-                Console.WriteLine("Analysis Success {0} / {1}", idx++, count);
+                Console.WriteLine("Analysis Success {0} / {1}", (idx++) + 1, count);
             }
+
+            Directory.CreateDirectory(_commandOptions.Output);
+
+            idx = 0;
+            foreach (ClassEntry entry in clases.Values)
+            {
+                string name = NoConflictSyntaxText(entry.Name);
+                if (name.StartsWith("_") || char.IsLower(name[0]))
+                    continue;
+
+                var unit = new CodeCompileUnit();
+                var @namespace = _commandOptions.ClassNamespace != null
+                    ? new CodeNamespace(_commandOptions.ClassNamespace)
+                    : new CodeNamespace();
+                var @class = new CodeTypeDeclaration(name);
+                @class.Attributes = MemberAttributes.Public;
+                foreach (ClassFunctionEntry functionEntry in entry.Entries)
+                {
+                    var method = new CodeMemberMethod();
+                    method.Name = NoConflictSyntaxText(functionEntry.Name);
+                    method.ReturnType = CreateTypeRefType(NoConflictSyntaxText(functionEntry.RetType));
+                    method.Attributes = MemberAttributes.Public;
+
+                    var dg = new CodeTypeDelegate("_" + method.Name + "_" + functionEntry.Address.ToString("x"));
+                    dg.ReturnType = CreateTypeRefType(NoConflictSyntaxText(functionEntry.RetType));
+                    dg.Attributes = MemberAttributes.Public;
+
+                    foreach (ClassFunctionParamEntry paramEntry in functionEntry.Params)
+                    {
+                        var param = new CodeParameterDeclarationExpression(CreateTypeRefType(NoConflictSyntaxText(paramEntry.ParamType)), NoConflictSyntaxText(paramEntry.ParamName));
+                        method.Parameters.Add(param);
+                        dg.Parameters.Add(param);
+                    }
+
+                    method.Statements.Add(new CodeSnippetStatement("        " + string.Format(_commandOptions.DllCallFunction, "0x" + functionEntry.Address.ToString("x"), dg.Name, string.Join(", ", functionEntry.Params.Select(e => NoConflictSyntaxText(e.ParamName))))));
+
+                    @class.Members.Add(method);
+                    @class.Members.Add(dg);
+                }
+
+                @namespace.Types.Add(@class);
+                unit.Namespaces.Add(@namespace);
+
+                CSharpCodeProvider provider = new CSharpCodeProvider();
+                using (StringWriter writer = new StringWriter())
+                {
+                    provider.GenerateCodeFromCompileUnit(unit, writer, new CodeGeneratorOptions());
+                    provider.Dispose();
+
+                    File.WriteAllText(_commandOptions.Output + "/" + MaxLenFix(@class.Name) + ".cs", writer.ToString());
+                }
+
+                Console.WriteLine("Generate Class Success {0} / {1}", (idx++) + 1, count);
+            }
+        }
+
+        public string NoConflictSyntaxText(string value)
+        {
+            return _invalidKeyReplaceRegex.Replace(value, "_")
+                .Replace('"', '_')
+                .Replace('\'', '_');
+        }
+        private string MaxLenFix(string value)
+        {
+            if (value.Length > 60)
+            {
+                var str = new string(value.Take(60).ToArray());
+                return str + "_etc";
+            }
+
+            return value;
+        }
+
+        public CodeTypeReference CreateTypeRefType(string type)
+        {
+            if (_convertTable.ContainsKey(type))
+            {
+                return new CodeTypeReference(Type.GetType(_convertTable[type]));
+            }
+
+            return new CodeTypeReference(type);
         }
 
         class ClassEntry
@@ -124,9 +225,9 @@ namespace GhidraCsvTableCodeGen.CodeBuilders
 
         class ClassFunctionParamEntry
         {
-            string ParamType { get; }
-            bool IsParamPointer { get; }
-            string ParamName { get; }
+            public string ParamType { get; }
+            public bool IsParamPointer { get; }
+            public string ParamName { get; }
 
             public ClassFunctionParamEntry(string paramType, string paramPointer, string paramName)
             {
